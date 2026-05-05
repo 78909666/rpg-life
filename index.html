@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>RPG Real Life</title>
+
+<style>
+body{background:black;color:#00ff66;font-family:monospace;padding:10px}
+.box{border:1px solid #00ff66;margin-top:10px;padding:10px}
+button{background:black;color:#00ff66;border:1px solid #00ff66;margin:3px;padding:5px}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#000a;justify-content:center;align-items:center}
+.modal-content{border:1px solid #00ff66;padding:10px;width:300px}
+.counter{display:flex;justify-content:space-between;margin:10px 0}
+.counter span{border:1px solid #00ff66;padding:3px;min-width:60px;text-align:center}
+input{background:black;color:#00ff66;border:1px solid #00ff66;margin:2px;padding:5px;width:100%}
+</style>
+</head>
+
+<body>
+
+<h1>RPG REAL LIFE</h1>
+
+<div class="box" id="info">Загрузка...</div>
+<div class="box" id="quest"></div>
+
+<div class="box">
+<h3>Профиль</h3>
+<div id="profileView"></div>
+<button onclick="toggleProfile()">Редактировать</button>
+
+<div id="profileEdit" style="display:none;">
+<input id="name">
+<input id="age">
+<input id="height">
+<input id="weight">
+<input id="gender">
+<button onclick="saveProfile()">Сохранить</button>
+</div>
+</div>
+
+<div class="box">
+<h3>Категории</h3>
+<button onclick="openCat('Сила')">Сила</button>
+<button onclick="openCat('Выносливость')">Выносливость</button>
+<button onclick="openCat('Интеллект')">Интеллект</button>
+<button onclick="openCat('Ловкость')">Ловкость</button>
+<button onclick="openCat('Мудрость')">Мудрость</button>
+<button onclick="openCat('Здоровье')">Здоровье</button>
+</div>
+
+<div class="box">
+<h3 id="catTitle">Выбери категорию</h3>
+<div id="actions"></div>
+</div>
+
+<div class="box">
+<h3>Навыки</h3>
+<div id="stats"></div>
+</div>
+
+<div class="modal" id="modal">
+<div class="modal-content">
+<h3 id="exName"></h3>
+<div id="tip"></div>
+
+<div class="counter">
+<button onclick="change(-1)">-1</button>
+<button onclick="change(-3)">-3</button>
+<span id="val" contenteditable="true">0</span>
+<button onclick="change(1)">+1</button>
+<button onclick="change(3)">+3</button>
+</div>
+
+<button onclick="apply()">Сохранить</button>
+<button onclick="closeModal()">Отмена</button>
+</div>
+</div>
+
+<script>
+
+const API_KEY = "5a372dbebfd5cddc5ad5000a774d6c62";
+
+// ===== ПРОФИЛЬ =====
+let profile = JSON.parse(localStorage.getItem("profile")) || {
+name:"Игрок",age:18,height:180,weight:70,gender:"не указан"
+};
+
+// ===== НАВЫКИ =====
+let skills = JSON.parse(localStorage.getItem("skills")) || {
+"Сила":{xp:0,lvl:1,last:10},
+"Выносливость":{xp:0,lvl:1,last:2},
+"Интеллект":{xp:0,lvl:1,last:10},
+"Ловкость":{xp:0,lvl:1,last:5},
+"Мудрость":{xp:0,lvl:1,last:5},
+"Здоровье":{xp:0,lvl:1,last:5}
+};
+
+function need(l){return 100*l;}
+let currentEx="";
+let currentWeather="clear";
+let currentCity="...";
+
+// ===== ВРЕМЯ =====
+function now(){
+let d=new Date();
+return{
+date:d.toLocaleDateString("ru-RU"),
+time:d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}),
+hour:d.getHours(),
+weekday:d.toLocaleDateString("ru-RU",{weekday:"long"})
+};
+}
+
+function isNight(h){return h<6||h>21;}
+
+// ===== ПОГОДА =====
+function loadWeather(){
+
+navigator.geolocation.getCurrentPosition(async pos=>{
+try{
+let r=await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&appid=${API_KEY}`);
+let d=await r.json();
+
+let w=d.weather[0].main.toLowerCase();
+currentCity=d.name;
+
+if(w.includes("rain")) currentWeather="rain";
+else if(w.includes("snow")) currentWeather="snow";
+else currentWeather="clear";
+
+update();
+
+}catch{}
+
+},()=>{
+
+// fallback
+fetch(`https://api.openweathermap.org/data/2.5/weather?q=Stockholm&appid=${API_KEY}`)
+.then(r=>r.json())
+.then(d=>{
+currentCity="Stockholm";
+currentWeather="clear";
+update();
+});
+
+});
+
+}
+
+// ===== КВЕСТ =====
+function genQuest(){
+
+let t=now();
+let night=isNight(t.hour);
+
+let q=[];
+
+q.push(`📘 Чтение: ${skills["Интеллект"].last}`);
+q.push(`🧘 Медитация: ${skills["Мудрость"].last}`);
+
+if(currentWeather==="clear" && !night){
+q.push(`🏃 Бег: ${Math.ceil(skills["Выносливость"].last*1.05)}`);
+q.push(`🏋️ Турник: ${Math.ceil(skills["Сила"].last*1.05)}`);
+}
+
+if(currentWeather!=="clear"){
+q.push(`💪 Отжимания: ${Math.ceil(skills["Сила"].last*1.05)}`);
+}
+
+if(night){
+q.push("🌙 Лёгкая активность");
+}
+
+return q;
+}
+
+// ===== UI =====
+function update(){
+
+let t=now();
+
+info.innerHTML=
+`${t.date} (${t.weekday})<br>${t.time}<br>${currentCity}<br>${currentWeather}`;
+
+let q=genQuest();
+quest.innerHTML=q.map(i=>"• "+i).join("<br>");
+
+let s="";
+for(let k in skills){
+let sk=skills[k];
+s+=`${k} LVL ${sk.lvl} (${sk.xp}/${need(sk.lvl)})<br>`;
+}
+stats.innerHTML=s;
+
+profileView.innerHTML=
+`${profile.name}<br>${profile.age} лет<br>${profile.height}см ${profile.weight}кг<br>${profile.gender}`;
+
+}
+
+// ===== ПРОФИЛЬ =====
+function toggleProfile(){
+profileEdit.style.display =
+profileEdit.style.display==="none"?"block":"none";
+
+name.value=profile.name;
+age.value=profile.age;
+height.value=profile.height;
+weight.value=profile.weight;
+gender.value=profile.gender;
+}
+
+function saveProfile(){
+profile={
+name:name.value,
+age:age.value,
+height:height.value,
+weight:weight.value,
+gender:gender.value
+};
+localStorage.setItem("profile",JSON.stringify(profile));
+update();
+toggleProfile();
+}
+
+// ===== XP =====
+function addXP(skill,val){
+let s=skills[skill];
+s.xp+=val;
+s.last=val;
+
+while(s.xp>=need(s.lvl)){
+s.xp-=need(s.lvl);
+s.lvl++;
+}
+
+localStorage.setItem("skills",JSON.stringify(skills));
+update();
+}
+
+// ===== КАТЕГОРИИ =====
+function openCat(c){
+
+let map={
+"Сила":["Отжимания","Приседания","Пресс","Подтягивания"],
+"Выносливость":["Бег","Ходьба","Планка","Прыжки"],
+"Интеллект":["Чтение","Задачи"],
+"Ловкость":["Стойка на одной ноге","Быстрые приседания","Наклон / касание пола","Прыжки в стороны"],
+"Мудрость":["Медитация","Эмоции"],
+"Здоровье":["Сон","Вес","Питание","Вода","Шаги"]
+};
+
+catTitle.innerText=c;
+
+actions.innerHTML=map[c]
+.map(e=>`<button onclick="openEx('${e}')">${e}</button>`)
+.join("");
+}
+
+// ===== МОДАЛКА =====
+function openEx(n){
+currentEx=n;
+exName.innerText=n;
+val.innerText=0;
+tip.innerText="Соблюдай технику";
+modal.style.display="flex";
+}
+
+function change(x){
+let v=parseInt(val.innerText)||0;
+v+=x;
+if(v<0)v=0;
+if(v>999)v=999;
+val.innerText=v;
+}
+
+function apply(){
+
+let v=parseInt(val.innerText)||0;
+
+let map={
+"Отжимания":"Сила","Приседания":"Сила","Пресс":"Сила","Подтягивания":"Сила",
+"Бег":"Выносливость","Ходьба":"Выносливость","Планка":"Выносливость","Прыжки":"Выносливость",
+"Чтение":"Интеллект","Задачи":"Интеллект",
+"Стойка на одной ноге":"Ловкость","Быстрые приседания":"Ловкость","Наклон / касание пола":"Ловкость","Прыжки в стороны":"Ловкость",
+"Медитация":"Мудрость","Эмоции":"Мудрость",
+"Сон":"Здоровье","Вес":"Здоровье","Питание":"Здоровье","Вода":"Здоровье","Шаги":"Здоровье"
+};
+
+addXP(map[currentEx],v*10);
+modal.style.display="none";
+}
+
+// ===== START =====
+update();
+loadWeather();
+setInterval(update,60000);
+
+</script>
+
+</body>
+</html>
